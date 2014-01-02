@@ -11,10 +11,6 @@ using Microsoft.CodeAnalysis.Emit;
 using Microsoft.Net.Runtime.FileSystem;
 using NuGet;
 
-#if DESKTOP // TODO: Temporary due to CoreCLR and Desktop Roslyn being out of sync
-using EmitResult = Microsoft.CodeAnalysis.Emit.CommonEmitResult;
-#endif
-
 namespace Microsoft.Net.Runtime.Loader.Roslyn
 {
     public class RoslynAssemblyLoader : IAssemblyLoader, IPackageLoader, IMetadataLoader
@@ -122,7 +118,7 @@ namespace Microsoft.Net.Runtime.Loader.Roslyn
                     }
 
                     _watcher.WatchFile(sourcePath);
-                    trees.Add(CSharpSyntaxTree.ParseFile(sourcePath, parseOptions));
+                    trees.Add(ParseFile(sourcePath, parseOptions));
                 }
 
                 if (!hasAssemblyInfo)
@@ -184,6 +180,16 @@ namespace Microsoft.Net.Runtime.Loader.Roslyn
             {
                 Trace.TraceInformation("[{0}]: Compiled '{1}' in {2}ms", GetType().Name, name, sw.ElapsedMilliseconds);
             }
+        }
+
+        private SyntaxTree ParseFile(string sourcePath, CSharpParseOptions parseOptions)
+        {
+            //if (PlatformHelper.IsMono)
+            //{
+            //    return CSharpSyntaxTree.ParseText(File.ReadAllText(sourcePath));
+            //}
+
+            return CSharpSyntaxTree.ParseFile(sourcePath, parseOptions);
         }
 
         public MetadataReference GetMetadata(string name)
@@ -295,7 +301,16 @@ namespace Microsoft.Net.Runtime.Loader.Roslyn
             using (var assemblyStream = new MemoryStream())
             {
 #if DESKTOP
-                EmitResult result = compilation.Emit(assemblyStream, pdbStream: pdbStream, manifestResources: resources);
+                EmitResult result = null;
+
+                if (PlatformHelper.IsMono)
+                {
+                    result = compilation.Emit(assemblyStream);
+                }
+                else
+                {
+                    result = compilation.Emit(assemblyStream, pdbStream: pdbStream, manifestResources: resources);
+                }
 #else
                 EmitResult result = compilation.Emit(assemblyStream);
 #endif
@@ -314,7 +329,7 @@ namespace Microsoft.Net.Runtime.Loader.Roslyn
                 var compiled = new CompiledAssembly
                 {
 #if DESKTOP
-                    Assembly = Assembly.Load(assemblyBytes, pdbBytes),
+                    Assembly = PlatformHelper.IsMono ? Assembly.Load(assemblyBytes) : Assembly.Load(assemblyBytes, pdbBytes),
 #else
                     Assembly = Assembly.Load(assemblyBytes),
 #endif
@@ -343,11 +358,7 @@ namespace Microsoft.Net.Runtime.Loader.Roslyn
 
         private static AssemblyLoadResult ReportCompilationError(EmitResult result)
         {
-#if DESKTOP // TODO: Temporary due to CoreCLR and Desktop Roslyn being out of sync
-            var formatter = DiagnosticFormatter.Instance;
-#else
             var formatter = new DiagnosticFormatter();
-#endif
             var errors = new List<string>(result.Diagnostics.Select(d => formatter.Format(d)));
 
             return new AssemblyLoadResult(errors);

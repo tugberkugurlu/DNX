@@ -112,7 +112,7 @@ namespace Microsoft.Net.Runtime
                 return new MetadataFileReference(assemblyLocation);
             }
 
-            throw new InvalidOperationException("Unable to resolve GAC reference");
+            throw new InvalidOperationException(String.Format("Unable to resolve GAC reference to '{0}'.", name));
         }
 
         private static void PopulateReferenceAssemblies(string path, IGlobalAssemblyCache globalAssemblyCache, IDictionary<FrameworkName, FrameworkInformation> cache)
