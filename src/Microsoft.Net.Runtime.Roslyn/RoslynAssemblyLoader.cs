@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -108,7 +109,12 @@ namespace Microsoft.Net.Runtime.Roslyn
 
                 var sw = Stopwatch.StartNew();
 
+#if NET45
                 EmitResult result = compilationContext.Compilation.Emit(assemblyStream, pdbStream: pdbStream, manifestResources: resources);
+#else
+                //Note: we need to a find coresystem version of diasymreader.dll to enable PDBs on CoreSystem
+                EmitResult result = compilationContext.Compilation.Emit(assemblyStream, /*pdbStream: pdbStream,*/ manifestResources: resources);
+#endif                
 
                 sw.Stop();
 

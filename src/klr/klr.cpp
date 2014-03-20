@@ -71,7 +71,7 @@ int CallFirmwareProcessMain(int argc, wchar_t* argv[])
         goto Finished;
     }
     if (m_fVerboseTrace)
-        printf_s("Found DLL Export: %s\r\n", pszCallApplicationMainName);
+		::wprintf_s(L"Found DLL Export: %S\r\n", pszCallApplicationMainName);
 
     HRESULT hr = pfnCallApplicationMain(&data);
     if (SUCCEEDED(hr))

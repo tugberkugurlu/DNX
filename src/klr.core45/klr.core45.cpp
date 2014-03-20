@@ -1,8 +1,11 @@
-// klr.net45.cpp : Defines the exported functions for the DLL application.
+// klr.core45.cpp : Defines the exported functions for the DLL application.
 //
 
 #include "stdafx.h"
+
+#ifndef CORESYSTEM
 #include <string>
+#endif
 
 #include "..\klr\klr.h"
 
@@ -18,6 +21,18 @@ void GetModuleDirectory(HMODULE module, LPWSTR szPath)
     szPath[dirLength + 1] = '\0';
 }
 
+#ifdef CORESYSTEM
+bool ScanDirectory(WCHAR* szDirectory, WCHAR* szPattern, LPWSTR pszTrustedPlatformAssemblies, size_t cchTrustedPlatformAssemblies)
+{
+    WCHAR wszPattern[MAX_PATH];
+    wszPattern[0] = L'\0';
+    
+    wcscpy_s(wszPattern, _countof(wszPattern), szDirectory);
+    wcscat_s(wszPattern, _countof(wszPattern), szPattern);
+    
+    WIN32_FIND_DATA ffd = {};
+    HANDLE findHandle = FindFirstFile(wszPattern, &ffd);
+#else
 bool ScanDirectory(TCHAR* szDirectory, TCHAR* szPattern, wstring& trustedPlatformAssemblies)
 {
     // Enumerate the core clr directory and add each .dll or .ni.dll to the list of trusted assemblies
@@ -26,6 +41,7 @@ bool ScanDirectory(TCHAR* szDirectory, TCHAR* szPattern, wstring& trustedPlatfor
 
     WIN32_FIND_DATA ffd;
     HANDLE findHandle = FindFirstFile(pattern.c_str(), &ffd);
+#endif
 
     if (INVALID_HANDLE_VALUE == findHandle)
     {
@@ -40,13 +56,23 @@ bool ScanDirectory(TCHAR* szDirectory, TCHAR* szPattern, wstring& trustedPlatfor
         }
         else
         {
+#ifdef CORESYSTEM
+            wcscat_s(pszTrustedPlatformAssemblies, cchTrustedPlatformAssemblies, szDirectory);
+            wcscat_s(pszTrustedPlatformAssemblies, cchTrustedPlatformAssemblies, ffd.cFileName);
+            wcscat_s(pszTrustedPlatformAssemblies, cchTrustedPlatformAssemblies, L";");
+            
+#else
             trustedPlatformAssemblies += szDirectory;
             trustedPlatformAssemblies += ffd.cFileName;
             trustedPlatformAssemblies += L";";
+#endif
         }
 
     } while (FindNextFile(findHandle, &ffd) != 0);
+    
+    return true;
 }
+
 
 HMODULE LoadCoreClr()
 {
@@ -56,6 +82,21 @@ HMODULE LoadCoreClr()
 
     if (dwCoreClrDirectory != 0)
     {
+#ifdef CORESYSTEM
+        WCHAR wszClrPath[MAX_PATH];
+        wszClrPath[0] = L'\0';
+
+        wcscpy_s(wszClrPath, _countof(wszClrPath), szCoreClrDirectory);
+
+        if (wszClrPath[wcslen(wszClrPath) - 1] != L'\\')
+        {
+            wcscat_s(wszClrPath, _countof(wszClrPath), L"\\");
+        }
+
+        wcscat_s(wszClrPath, _countof(wszClrPath), L"coreclr.dll");
+
+        hCoreCLRModule = ::LoadLibraryExW(wszClrPath, NULL, 0);
+#else
         wstring clrPath(szCoreClrDirectory);
         if (clrPath.back() != '\\')
         {
@@ -65,6 +106,8 @@ HMODULE LoadCoreClr()
         clrPath += L"coreclr.dll";
 
         hCoreCLRModule = ::LoadLibraryExW(clrPath.c_str(), NULL, 0);
+#endif
+    
     }
 
     if (hCoreCLRModule == nullptr)
@@ -113,6 +156,8 @@ extern "C" __declspec(dllexport) bool __stdcall CallApplicationMain(PCALL_APPLIC
     else {
         GetModuleDirectory(NULL, szCurrentDirectory);
     }
+
+    wprintf_s(L"Current Directory: %s\n", szCurrentDirectory);
 
     HMODULE hCoreCLRModule = LoadCoreClr();
     if (!hCoreCLRModule)
@@ -196,9 +241,26 @@ extern "C" __declspec(dllexport) bool __stdcall CallApplicationMain(PCALL_APPLIC
         //
     };
 
-    // TODO: Scan a fixed list instead and check for either .ni or .ni.dll
-    // This list coule be generated a build time
-
+#ifdef CORESYSTEM
+    size_t cchTrustedPlatformAssemblies = (16 * 1024); //16K WCHARs
+    size_t cbTrustedPlatformAssemblies = ((cchTrustedPlatformAssemblies+1) * sizeof(WCHAR));
+    LPWSTR pwszTrustedPlatformAssemblies = (LPWSTR)malloc(cbTrustedPlatformAssemblies);
+    if (pwszTrustedPlatformAssemblies == NULL)
+    {
+        goto Finished;
+    }
+    pwszTrustedPlatformAssemblies[0] = L'\0';
+    
+    // Try native images first
+    if (!ScanDirectory(szCoreClrDirectory, L"*.ni.dll", pwszTrustedPlatformAssemblies, cchTrustedPlatformAssemblies))
+    {
+        if (!ScanDirectory(szCoreClrDirectory, L"*.dll", pwszTrustedPlatformAssemblies, cchTrustedPlatformAssemblies))
+        {
+            printf_s("Failed to find files in the coreclr directory\n");
+            return false;
+        }
+    }
+#else
     wstring trustedPlatformAssemblies;
 
     // Try native images first
@@ -210,8 +272,33 @@ extern "C" __declspec(dllexport) bool __stdcall CallApplicationMain(PCALL_APPLIC
             return false;
         }
     }
+#endif
 
     // Add the assembly containing the app domain manager to the trusted list
+
+#ifdef CORESYSTEM
+    wcscat_s(pwszTrustedPlatformAssemblies, cchTrustedPlatformAssemblies, szCurrentDirectory);
+    wcscat_s(pwszTrustedPlatformAssemblies, cchTrustedPlatformAssemblies, L"klr.core45.managed.dll");
+
+    //wstring appPaths(szCurrentDirectory);
+    WCHAR wszAppPaths[MAX_PATH];
+    wszAppPaths[0] = L'\0';
+
+    wcscat_s(wszAppPaths, _countof(wszAppPaths), szCurrentDirectory);
+    wcscat_s(wszAppPaths, _countof(wszAppPaths), L";");
+
+    wcscat_s(wszAppPaths, _countof(wszAppPaths), szCoreClrDirectory);
+    wcscat_s(wszAppPaths, _countof(wszAppPaths), L";");
+
+    const wchar_t* property_values[] = {
+        // APPBASE
+        data->applicationBase,
+        // TRUSTED_PLATFORM_ASSEMBLIES
+        pwszTrustedPlatformAssemblies,
+        // APP_PATHS
+        wszAppPaths,
+    };
+#else
     trustedPlatformAssemblies += szCurrentDirectory;
     trustedPlatformAssemblies += L"klr.core45.managed.dll";
 
@@ -228,6 +315,7 @@ extern "C" __declspec(dllexport) bool __stdcall CallApplicationMain(PCALL_APPLIC
         // APP_PATHS
         appPaths.c_str(),
     };
+#endif
 
     DWORD domainId;
     DWORD dwFlagsAppDomain =
@@ -252,6 +340,13 @@ extern "C" __declspec(dllexport) bool __stdcall CallApplicationMain(PCALL_APPLIC
 
     if (FAILED(hr))
     {
+#ifdef CORESYSTEM    
+        wprintf_s(L"TPA      %d %s\n", wcslen(pwszTrustedPlatformAssemblies), pwszTrustedPlatformAssemblies);
+        wprintf_s(L"AppPaths %s\n", wszAppPaths);
+#else
+        wprintf_s(L"TPA      %d %s\n", wcslen(trustedPlatformAssemblies.c_str()), trustedPlatformAssemblies.c_str());
+        wprintf_s(L"AppPaths %s\n", appPaths.c_str());
+#endif
         printf_s("Failed to create app domain (%d).\n", hr);
         return false;
     }
@@ -280,6 +375,13 @@ extern "C" __declspec(dllexport) bool __stdcall CallApplicationMain(PCALL_APPLIC
     pCLRRuntimeHost->UnloadAppDomain(domainId, true);
 
     pCLRRuntimeHost->Stop();
+    
+Finished:    
+    if (pwszTrustedPlatformAssemblies != NULL)
+    {
+        free(pwszTrustedPlatformAssemblies);
+        pwszTrustedPlatformAssemblies = NULL;
+    }
 
     if (FAILED(hr))
     {

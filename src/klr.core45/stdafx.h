@@ -14,11 +14,15 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
+#define CORESYSTEM
+
+#ifndef CORESYSTEM
 // C++ Headers
 #include <string>
 
 // STL
 using namespace std;
+#endif
 
 // CRT Headers
 #include <stdio.h>
