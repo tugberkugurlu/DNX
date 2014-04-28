@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Open Technologies, Inc. All rights reserved.
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -113,7 +114,8 @@ namespace Microsoft.Framework.Runtime.Roslyn
 
                 EmitResult result = null;
 
-                if (PlatformHelper.IsMono)
+                //diasmreader not working on CoreSystemServer yet: SET KRE_ROSLYN_EMIT_NOPDB=1
+                if ((PlatformHelper.IsMono) || (Environment.GetEnvironmentVariable("KRE_ROSLYN_EMIT_NOPDB") == "1"))
                 {
                     result = compilationContext.Compilation.Emit(assemblyStream, manifestResources: resources);
                 }
