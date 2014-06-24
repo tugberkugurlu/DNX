@@ -50,7 +50,17 @@ namespace Microsoft.Framework.PackageManager.Packing
 
             foreach (var deploymentProject in Projects)
             {
-                deploymentProject.Emit(this);
+                // TODO: temporarily emit sources for main project to make sure "k run"
+                // can find entry point of the program. Later we should make main project
+                // a nukpg too.
+                if (deploymentProject == mainProject)
+                {
+                    deploymentProject.EmitSource(this);
+                }
+                else
+                {
+                    deploymentProject.EmitNupkg(this);
+                }
             }
 
             foreach (var deploymentRuntime in Runtimes)
